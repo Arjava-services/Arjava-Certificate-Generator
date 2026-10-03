@@ -1,0 +1,22 @@
+[Unit]
+Description=Certificate Generator FastAPI Service
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/certgen/backend
+Environment="PATH=/var/www/certgen/backend/.venv/bin"
+ExecStart=/var/www/certgen/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 4
+
+Restart=always
+RestartSec=5s
+
+# Security hardening
+PrivateTmp=true
+ProtectSystem=full
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

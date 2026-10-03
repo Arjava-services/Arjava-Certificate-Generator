@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  certificate-generator:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: certgen-app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=false
+      - DATABASE_URL=sqlite:////app/data/certificates.db
+      - MAX_FILE_SIZE_MB=25
+      - CORS_ORIGINS=["*"]
+      # Optional: Add Google Cloud Credentials if using Service Account
+      # - GOOGLE_SERVICE_ACCOUNT_FILE=/app/credentials/service-account.json
+    volumes:
+      - certgen_data:/app/data
+      - certgen_uploads:/app/uploads
+
+volumes:
+  certgen_data:
+  certgen_uploads:
