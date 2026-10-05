@@ -39,11 +39,13 @@ export const ProjectWorkspacePage: React.FC<ProjectWorkspacePageProps> = ({
   const [namingPattern, setNamingPattern] = useState('{{name}}_Certificate_{{year}}');
 
   useEffect(() => {
-    loadProjectWorkspace();
+    loadProjectWorkspace(true);
   }, [projectId]);
 
-  const loadProjectWorkspace = async () => {
-    setLoading(true);
+  const loadProjectWorkspace = async (isInitial = false) => {
+    if (isInitial) {
+      setLoading(true);
+    }
     try {
       const proj = await api.getProject(projectId);
       setProject(proj);
@@ -70,26 +72,34 @@ export const ProjectWorkspacePage: React.FC<ProjectWorkspacePageProps> = ({
         }
       }
 
-      // Default step selection:
+      // Default step selection ONLY on initial mount:
       // If template uploaded and no sheet -> Step 2
       // If sheet is connected and fields mapped -> Step 3 or 4
-      if (proj.template_filename) {
-        if (!proj.sheet_url) {
-          setActiveStep(2);
-        } else if (maps.length > 0 && maps.some(m => m.sheet_column)) {
-          setActiveStep(3);
+      if (isInitial) {
+        if (proj.template_filename) {
+          if (!proj.sheet_url) {
+            setActiveStep(2);
+          } else if (maps.length > 0 && maps.some(m => m.sheet_column)) {
+            setActiveStep(3);
+          } else {
+            setActiveStep(2);
+          }
         } else {
-          setActiveStep(2);
+          setActiveStep(1);
         }
-      } else {
-        setActiveStep(1);
       }
     } catch (err: any) {
       alert('Failed to load project: ' + err.message);
       onNavigateHome();
     } finally {
-      setLoading(false);
+      if (isInitial) {
+        setLoading(false);
+      }
     }
+  };
+
+  const handleRefreshProject = () => {
+    loadProjectWorkspace(false);
   };
 
   const handleDataLoaded = (
@@ -326,7 +336,7 @@ export const ProjectWorkspacePage: React.FC<ProjectWorkspacePageProps> = ({
             rows={rows}
             outputFormat={outputFormat}
             namingPattern={namingPattern}
-            onRefreshProject={loadProjectWorkspace}
+            onRefreshProject={handleRefreshProject}
           />
         )}
       </div>

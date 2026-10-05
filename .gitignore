@@ -1,0 +1,21 @@
+# Firebase Secrets
+*firebase-key*.json
+*.json.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+.env
+
+# Database & local data
+backend/data/*.db
+backend/uploads/
+
+# Node
+node_modules/
+dist/
+build/

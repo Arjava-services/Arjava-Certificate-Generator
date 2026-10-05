@@ -49,7 +49,9 @@ export const GenerateStep: React.FC<GenerateStepProps> = ({
     setLoadingCerts(true);
     try {
       const res = await api.getCertificates(project.id);
-      setCertificates(res.certificates);
+      if (res && Array.isArray(res.certificates)) {
+        setCertificates(res.certificates);
+      }
     } catch (err: any) {
       console.error('Failed to load certificates:', err);
     } finally {
@@ -82,6 +84,11 @@ export const GenerateStep: React.FC<GenerateStepProps> = ({
             setGenerating(false);
             await loadExistingCertificates();
             onRefreshProject();
+
+            // Additional refresh to ensure fresh state is displayed
+            setTimeout(() => {
+              loadExistingCertificates();
+            }, 600);
 
             if (status.status === 'completed' || status.status === 'partial') {
               // Celebrate!

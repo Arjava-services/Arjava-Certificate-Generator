@@ -10,7 +10,22 @@ import type {
   SampleTemplate,
 } from '../types';
 
-const API_BASE = '/api/v1';
+export function getApiBase(): string {
+  if (typeof window !== 'undefined') {
+    const custom = localStorage.getItem('CUSTOM_API_URL');
+    if (custom && custom.trim()) {
+      return `${custom.trim().replace(/\/$/, '')}/api/v1`;
+    }
+  }
+  const rawBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '';
+  return rawBase ? `${rawBase.replace(/\/$/, '')}/api/v1` : '/api/v1';
+}
+
+async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers || {});
+  headers.set('Bypass-Tunnel-Reminder', 'true');
+  return fetch(input, { ...init, headers });
+}
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -34,12 +49,12 @@ async function handleResponse<T>(res: Response): Promise<T> {
 export const api = {
   // Projects
   async getProjects(): Promise<ProjectListItem[]> {
-    const res = await fetch(`${API_BASE}/projects`);
+    const res = await apiFetch(`${getApiBase()}/projects`);
     return handleResponse<ProjectListItem[]>(res);
   },
 
   async createProject(name: string): Promise<ProjectDetail> {
-    const res = await fetch(`${API_BASE}/projects`, {
+    const res = await apiFetch(`${getApiBase()}/projects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
@@ -48,12 +63,12 @@ export const api = {
   },
 
   async getProject(projectId: string): Promise<ProjectDetail> {
-    const res = await fetch(`${API_BASE}/projects/${projectId}`);
+    const res = await apiFetch(`${getApiBase()}/projects/${projectId}`);
     return handleResponse<ProjectDetail>(res);
   },
 
   async updateProject(projectId: string, data: Partial<ProjectDetail>): Promise<ProjectDetail> {
-    const res = await fetch(`${API_BASE}/projects/${projectId}`, {
+    const res = await apiFetch(`${getApiBase()}/projects/${projectId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -62,7 +77,7 @@ export const api = {
   },
 
   async deleteProject(projectId: string): Promise<void> {
-    const res = await fetch(`${API_BASE}/projects/${projectId}`, {
+    const res = await apiFetch(`${getApiBase()}/projects/${projectId}`, {
       method: 'DELETE',
     });
     return handleResponse<void>(res);
@@ -73,7 +88,7 @@ export const api = {
     const formData = new FormData();
     formData.append('project_id', projectId);
     formData.append('file', file);
-    const res = await fetch(`${API_BASE}/templates/upload`, {
+    const res = await apiFetch(`${getApiBase()}/templates/upload`, {
       method: 'POST',
       body: formData,
     });
@@ -81,7 +96,7 @@ export const api = {
   },
 
   async getSampleTemplates(): Promise<SampleTemplate[]> {
-    const res = await fetch(`${API_BASE}/templates/samples`);
+    const res = await apiFetch(`${getApiBase()}/templates/samples`);
     return handleResponse<SampleTemplate[]>(res);
   },
 
@@ -89,7 +104,7 @@ export const api = {
     const formData = new FormData();
     formData.append('project_id', projectId);
     formData.append('sample_filename', sampleFilename);
-    const res = await fetch(`${API_BASE}/templates/use-sample`, {
+    const res = await apiFetch(`${getApiBase()}/templates/use-sample`, {
       method: 'POST',
       body: formData,
     });
@@ -97,21 +112,21 @@ export const api = {
   },
 
   getTemplatePreviewUrl(projectId: string, version?: string): string {
-    return `${API_BASE}/templates/${projectId}/preview${version ? `?v=${encodeURIComponent(version)}` : ''}`;
+    return `${getApiBase()}/templates/${projectId}/preview${version ? `?v=${encodeURIComponent(version)}` : ''}`;
   },
 
   getTemplateDirectUrl(projectId: string): string {
-    return `${API_BASE}/templates/${projectId}/preview`;
+    return `${getApiBase()}/templates/${projectId}/preview`;
   },
 
   // Field Mappings
   async getMappings(projectId: string): Promise<FieldMapping[]> {
-    const res = await fetch(`${API_BASE}/mappings/${projectId}`);
+    const res = await apiFetch(`${getApiBase()}/mappings/${projectId}`);
     return handleResponse<FieldMapping[]>(res);
   },
 
   async saveMappings(projectId: string, mappings: FieldMapping[]): Promise<FieldMapping[]> {
-    const res = await fetch(`${API_BASE}/mappings/${projectId}`, {
+    const res = await apiFetch(`${getApiBase()}/mappings/${projectId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mappings }),
@@ -121,7 +136,7 @@ export const api = {
 
   // Google Sheets
   async connectSheet(sheetUrl: string): Promise<SheetConnectResponse> {
-    const res = await fetch(`${API_BASE}/sheets/connect`, {
+    const res = await apiFetch(`${getApiBase()}/sheets/connect`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sheet_url: sheetUrl }),
@@ -130,7 +145,7 @@ export const api = {
   },
 
   async getSheetData(sheetUrl: string, tabName: string): Promise<SheetDataResponse> {
-    const res = await fetch(`${API_BASE}/sheets/data`, {
+    const res = await apiFetch(`${getApiBase()}/sheets/data`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sheet_url: sheetUrl, tab_name: tabName, max_preview_rows: 500 }),
@@ -139,12 +154,12 @@ export const api = {
   },
 
   async getDemoParticipants(): Promise<SheetDataResponse> {
-    const res = await fetch(`${API_BASE}/sheets/demo`);
+    const res = await apiFetch(`${getApiBase()}/sheets/demo`);
     return handleResponse<SheetDataResponse>(res);
   },
 
   async validateSheet(projectId: string, rows: Record<string, any>[]): Promise<SheetValidationResult> {
-    const res = await fetch(`${API_BASE}/sheets/validate`, {
+    const res = await apiFetch(`${getApiBase()}/sheets/validate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project_id: projectId, rows }),
@@ -158,7 +173,7 @@ export const api = {
 
   // Generation & Preview
   async previewSingle(projectId: string, rowData: Record<string, any>, outputFormat = 'png', mappings?: FieldMapping[]): Promise<{ preview_url: string; participant_name: string; filename: string }> {
-    const res = await fetch(`${API_BASE}/generate/preview-single`, {
+    const res = await apiFetch(`${getApiBase()}/generate/preview-single`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project_id: projectId, row_data: rowData, output_format: outputFormat, mappings }),
@@ -171,7 +186,7 @@ export const api = {
   },
 
   async startGeneration(projectId: string, rows: Record<string, any>[], outputFormat: string, namingPattern: string): Promise<JobStatus> {
-    const res = await fetch(`${API_BASE}/generate`, {
+    const res = await apiFetch(`${getApiBase()}/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -185,25 +200,25 @@ export const api = {
   },
 
   async getJobStatus(jobId: string): Promise<JobStatus> {
-    const res = await fetch(`${API_BASE}/generate/jobs/${jobId}`);
+    const res = await apiFetch(`${getApiBase()}/generate/jobs/${jobId}`);
     return handleResponse<JobStatus>(res);
   },
 
   // Certificates
   async getCertificates(projectId: string): Promise<{ total: number; certificates: CertificateItem[] }> {
-    const res = await fetch(`${API_BASE}/certificates/${projectId}`);
+    const res = await apiFetch(`${getApiBase()}/certificates/${projectId}`);
     return handleResponse<{ total: number; certificates: CertificateItem[] }>(res);
   },
 
   getCertificateDownloadUrl(certificateId: string): string {
-    return `${API_BASE}/certificates/${certificateId}/download`;
+    return `${getApiBase()}/certificates/${certificateId}/download`;
   },
 
   getCertificatePreviewUrl(certificateId: string): string {
-    return `${API_BASE}/certificates/${certificateId}/preview`;
+    return `${getApiBase()}/certificates/${certificateId}/preview`;
   },
 
   getAllCertificatesZipUrl(projectId: string): string {
-    return `${API_BASE}/certificates/${projectId}/download-all`;
+    return `${getApiBase()}/certificates/${projectId}/download-all`;
   },
 };

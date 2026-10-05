@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "*"]
 
+    # Firebase Configuration
+    USE_FIREBASE: bool = True
+    FIREBASE_KEY_PATH: str = str(BASE_DIR / "firebase-key.json")
+    FIREBASE_STORAGE_BUCKET: str = "certificategenerator-ceb1a.firebasestorage.app"
+    FIREBASE_PROJECT_ID: str = "certificategenerator-ceb1a"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

@@ -1,6 +1,7 @@
 import os
+import uuid
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, status
@@ -70,10 +71,12 @@ def run_certificate_generation_task(
             if not participant_name:
                 participant_name = f"Participant_{idx + 1}"
 
-            # Update job progress
-            job.current_participant = participant_name
-            job.processed_rows = idx + 1
-            db.commit()
+            # Update job progress in repository
+            repo.update_job(
+                job_id,
+                current_participant=participant_name,
+                processed_rows=idx + 1
+            )
 
             try:
                 # Render file
@@ -98,6 +101,7 @@ def run_certificate_generation_task(
                     f.write(cert_bytes)
 
                 cert = Certificate(
+                    id=str(uuid.uuid4()),
                     project_id=project_id,
                     participant_name=participant_name,
                     row_index=row.get("_row_number", idx + 1),
@@ -108,15 +112,14 @@ def run_certificate_generation_task(
                     output_format=output_format,
                     status="generated"
                 )
-                db.add(cert)
-                db.commit()
+                repo.add_certificate(cert)
                 successful_certs.append(cert)
-                job.successful_count += 1
             except Exception as ex:
                 err_msg = f"Row {idx + 1} ({participant_name}): {str(ex)}"
+                print(f"[CertGen Error] {err_msg}")
                 error_log.append({"row": idx + 1, "participant": participant_name, "error": str(ex)})
-                job.failed_count += 1
                 failed_cert = Certificate(
+                    id=str(uuid.uuid4()),
                     project_id=project_id,
                     participant_name=participant_name,
                     row_index=row.get("_row_number", idx + 1),
@@ -128,29 +131,47 @@ def run_certificate_generation_task(
                     status="failed",
                     error_message=str(ex)
                 )
-                db.add(failed_cert)
-                db.commit()
+                repo.add_certificate(failed_cert)
 
         # Build ZIP archive of all successful certificates
+        zip_filename = None
+        zip_path_str = None
         if successful_certs:
             zip_filename = f"certificates_{project_id[:8]}.zip"
             zip_path = project_gen_dir / zip_filename
             zip_service.create_certificates_zip(successful_certs, zip_path)
-            job.zip_filename = zip_filename
-            job.zip_path = str(zip_path)
+            zip_path_str = str(zip_path)
 
-        job.status = "completed" if job.failed_count == 0 else ("partial" if job.successful_count > 0 else "failed")
-        job.error_log = error_log
-        job.completed_at = datetime.utcnow()
-        db.commit()
+        final_status = "completed" if len(error_log) == 0 else ("partial" if len(successful_certs) > 0 else "failed")
+        now_dt = datetime.now(timezone.utc)
+        repo.update_job(
+            job_id,
+            status=final_status,
+            processed_rows=total,
+            successful_count=len(successful_certs),
+            failed_count=len(error_log),
+            error_log=error_log,
+            zip_filename=zip_filename,
+            zip_path=zip_path_str,
+            completed_at=now_dt
+        )
     except Exception as e:
-        if job:
-            job.status = "failed"
-            job.error_log = [{"error": str(e)}]
-            job.completed_at = datetime.utcnow()
-            db.commit()
+        import traceback
+        traceback.print_exc()
+        try:
+            repo.update_job(
+                job_id,
+                status="failed",
+                error_log=[{"error": str(e)}],
+                completed_at=datetime.now(timezone.utc)
+            )
+        except Exception:
+            pass
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception:
+            pass
 
 @router.post("/preview-single", response_model=PreviewSingleResponse)
 def preview_single_certificate(data: PreviewSingleRequest, db: Session = Depends(get_db)):
