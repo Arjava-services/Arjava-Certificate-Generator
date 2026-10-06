@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { ProjectDetail, FieldMapping } from '../types';
+import type { ProjectDetail, FieldMapping, SheetTabInfo } from '../types';
 import { api } from '../services/api';
 import { TemplateCanvas } from '../components/TemplateCanvas';
 import { GoogleSheetStep } from '../components/GoogleSheetStep';
@@ -31,6 +31,7 @@ export const ProjectWorkspacePage: React.FC<ProjectWorkspacePageProps> = ({
   const [mappings, setMappings] = useState<FieldMapping[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<Record<string, any>[]>([]);
+  const [tabs, setTabs] = useState<SheetTabInfo[]>([]);
   const [activeStep, setActiveStep] = useState<number>(1);
   const [loading, setLoading] = useState(true);
 
@@ -55,20 +56,32 @@ export const ProjectWorkspacePage: React.FC<ProjectWorkspacePageProps> = ({
       const maps = await api.getMappings(projectId);
       setMappings(maps);
 
-      // If project has sheet connected, attempt to load sheet data
-      if (proj.sheet_url && proj.sheet_tab_name) {
-        try {
-          if (proj.sheet_url === 'https://docs.google.com/spreadsheets/d/demo-hackathon-2026/edit' || proj.sheet_id?.startsWith('demo-')) {
-            const demo = await api.getDemoParticipants();
-            setHeaders(demo.headers);
-            setRows(demo.all_rows || demo.preview_rows);
-          } else {
-            const sheetData = await api.getSheetData(proj.sheet_url, proj.sheet_tab_name);
-            setHeaders(sheetData.headers);
-            setRows(sheetData.all_rows || sheetData.preview_rows);
+      // If project has sheet connected, attempt to load sheet data and tabs
+      if (proj.sheet_url) {
+        if (proj.sheet_url === 'https://docs.google.com/spreadsheets/d/demo-hackathon-2026/edit' || proj.sheet_id?.startsWith('demo-')) {
+          setTabs([{ title: 'Participants', row_count: 8 }]);
+        } else {
+          api.connectSheet(proj.sheet_url).then((res) => {
+            if (res?.tabs && res.tabs.length > 0) {
+              setTabs(res.tabs);
+            }
+          }).catch((e) => console.warn('Could not auto-fetch tabs:', e));
+        }
+
+        if (proj.sheet_tab_name) {
+          try {
+            if (proj.sheet_url === 'https://docs.google.com/spreadsheets/d/demo-hackathon-2026/edit' || proj.sheet_id?.startsWith('demo-')) {
+              const demo = await api.getDemoParticipants();
+              setHeaders(demo.headers);
+              setRows(demo.all_rows || demo.preview_rows);
+            } else {
+              const sheetData = await api.getSheetData(proj.sheet_url, proj.sheet_tab_name);
+              setHeaders(sheetData.headers);
+              setRows(sheetData.all_rows || sheetData.preview_rows);
+            }
+          } catch (e) {
+            console.warn('Could not auto-fetch sheet data:', e);
           }
-        } catch (e) {
-          console.warn('Could not auto-fetch sheet data:', e);
         }
       }
 
@@ -298,6 +311,10 @@ export const ProjectWorkspacePage: React.FC<ProjectWorkspacePageProps> = ({
             project={project}
             initialSheetUrl={project.sheet_url || ''}
             initialTabName={project.sheet_tab_name || ''}
+            existingTabs={tabs}
+            onTabsUpdated={setTabs}
+            existingHeaders={headers}
+            existingRows={rows}
             onDataLoaded={handleDataLoaded}
             onProceedToMapping={() => setActiveStep(3)}
           />

@@ -75,7 +75,15 @@ async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 204) {
     return {} as T;
   }
-  return res.json();
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('text/html')) {
+    throw new Error('Received HTML response instead of JSON. The backend API server may be offline or not configured. Use "API Server" in the navbar to connect your backend URL.');
+  }
+  try {
+    return await res.json();
+  } catch {
+    throw new Error('Failed to parse server response as JSON. Check that your backend API server is online.');
+  }
 }
 
 export const api = {

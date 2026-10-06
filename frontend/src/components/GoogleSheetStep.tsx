@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { SheetConnectResponse, SheetDataResponse, SheetTabInfo, ProjectDetail } from '../types';
 import { api } from '../services/api';
 import {
@@ -19,6 +19,10 @@ interface GoogleSheetStepProps {
   project: ProjectDetail;
   initialSheetUrl?: string;
   initialTabName?: string;
+  existingTabs?: SheetTabInfo[];
+  onTabsUpdated?: (tabs: SheetTabInfo[]) => void;
+  existingHeaders?: string[];
+  existingRows?: Record<string, any>[];
   onDataLoaded: (headers: string[], rows: Record<string, any>[], sheetUrl: string, tabName: string) => void;
   onProceedToMapping?: () => void;
 }
@@ -27,26 +31,68 @@ export const GoogleSheetStep: React.FC<GoogleSheetStepProps> = ({
   project,
   initialSheetUrl = '',
   initialTabName = '',
+  existingTabs = [],
+  onTabsUpdated,
+  existingHeaders = [],
+  existingRows = [],
   onDataLoaded,
   onProceedToMapping,
 }) => {
   const [sheetUrl, setSheetUrl] = useState(initialSheetUrl || project.sheet_url || '');
   const [connecting, setConnecting] = useState(false);
   const [readingData, setReadingData] = useState(false);
+  const [loadingTab, setLoadingTab] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [tabs, setTabs] = useState<SheetTabInfo[]>([]);
+  const [tabs, setTabs] = useState<SheetTabInfo[]>(existingTabs && existingTabs.length > 0 ? existingTabs : []);
   const [selectedTab, setSelectedTab] = useState<string>(initialTabName || project.sheet_tab_name || '');
   const [customTabInput, setCustomTabInput] = useState<string>('');
   const [showCustomTabInput, setShowCustomTabInput] = useState<boolean>(false);
-  const [dataResponse, setDataResponse] = useState<SheetDataResponse | null>(null);
+  const [dataResponse, setDataResponse] = useState<SheetDataResponse | null>(() => {
+    if (existingHeaders && existingHeaders.length > 0 && existingRows && existingRows.length > 0) {
+      return {
+        spreadsheet_id: project.sheet_id || '',
+        tab_name: initialTabName || project.sheet_tab_name || '',
+        total_rows: existingRows.length,
+        headers: existingHeaders,
+        preview_rows: existingRows.slice(0, 10),
+        all_rows: existingRows,
+      };
+    }
+    return null;
+  });
 
   const [templateImgSrc, setTemplateImgSrc] = useState(
     api.getTemplatePreviewUrl(project.id, project.updated_at)
   );
 
+  // Sync tabs from parent if updated
+  useEffect(() => {
+    if (existingTabs && existingTabs.length > 0) {
+      setTabs(existingTabs);
+    }
+  }, [existingTabs]);
+
+  // If sheetUrl exists and tabs is empty, automatically fetch tabs on mount
+  useEffect(() => {
+    const targetUrl = (sheetUrl || project.sheet_url || '').trim();
+    if (targetUrl && tabs.length === 0 && !connecting) {
+      setConnecting(true);
+      api.connectSheet(targetUrl)
+        .then((res) => {
+          if (res?.tabs && res.tabs.length > 0) {
+            setTabs(res.tabs);
+            onTabsUpdated?.(res.tabs);
+          }
+        })
+        .catch((e) => console.warn('Could not auto-fetch tabs:', e))
+        .finally(() => setConnecting(false));
+    }
+  }, []);
+
   const handleConnect = async (urlToConnect = sheetUrl) => {
-    if (!urlToConnect.trim()) {
+    const trimmed = urlToConnect.trim();
+    if (!trimmed) {
       setError('Please enter a Google Sheet URL or ID.');
       return;
     }
@@ -54,23 +100,29 @@ export const GoogleSheetStep: React.FC<GoogleSheetStepProps> = ({
     setConnecting(true);
 
     try {
-      const res: SheetConnectResponse = await api.connectSheet(urlToConnect.trim());
+      const res: SheetConnectResponse = await api.connectSheet(trimmed);
       setTabs(res.tabs);
-      // If project or initial tab was set and exists in tabs, keep it; otherwise use first tab
-      const foundInitial = res.tabs.find((t) => t.title.toLowerCase() === (initialTabName || project.sheet_tab_name || '').toLowerCase());
-      const defaultTab = foundInitial ? foundInitial.title : (res.tabs.length > 0 ? res.tabs[0].title : 'Sheet1');
-      setSelectedTab(defaultTab);
-      // Auto-fetch data for the selected tab
-      await fetchTabData(urlToConnect.trim(), defaultTab);
+      onTabsUpdated?.(res.tabs);
+      if (!res.tabs || res.tabs.length === 0) {
+        setError('No sheet tabs were found in this spreadsheet. Please ensure the sheet is shared as "Anyone with the link can view".');
+      } else {
+        const found = res.tabs.find((t) => t.title.toLowerCase() === selectedTab.toLowerCase());
+        if (found) {
+          setSelectedTab(found.title);
+        }
+      }
+      // Note: We do NOT auto-select tab 0 and do NOT auto-advance to next page!
+      // The tabs will be displayed on screen so the user can choose which tab to use.
     } catch (err: any) {
-      setError(err.message || 'Failed to connect to Google Sheet.');
+      setError(err.message || 'Failed to connect to Google Sheet. Make sure the sheet is shared as "Anyone with the link can view".');
     } finally {
       setConnecting(false);
     }
   };
 
-  const fetchTabData = async (url: string, tab: string) => {
+  const fetchTabDataAndAdvance = async (url: string, tab: string) => {
     if (!tab.trim()) return;
+    setLoadingTab(tab.trim());
     setReadingData(true);
     setError(null);
     try {
@@ -85,25 +137,32 @@ export const GoogleSheetStep: React.FC<GoogleSheetStepProps> = ({
       });
       onDataLoaded(data.headers, data.all_rows || data.preview_rows, url, tab.trim());
     } catch (err: any) {
-      setError(err.message || `Failed to read data from sheet tab '${tab}'. Make sure the tab name is spelled correctly.`);
+      setError(err.message || `Failed to read data from sheet tab '${tab}'. Make sure row 1 contains headers.`);
     } finally {
       setReadingData(false);
+      setLoadingTab(null);
     }
   };
 
-  const handleTabChange = async (newTab: string) => {
+  const handleTabClick = async (newTab: string) => {
+    const targetUrl = (sheetUrl || project.sheet_url || '').trim();
+    if (!targetUrl) {
+      setError('Please provide a Google Sheet URL first.');
+      return;
+    }
     setSelectedTab(newTab);
-    await fetchTabData(sheetUrl, newTab);
+    await fetchTabDataAndAdvance(targetUrl, newTab);
   };
 
   const handleLoadCustomTab = async () => {
     const trimmed = customTabInput.trim();
     if (!trimmed) return;
-    // Add to tabs if not already present
     if (!tabs.some((t) => t.title.toLowerCase() === trimmed.toLowerCase())) {
-      setTabs((prev) => [...prev, { title: trimmed, sheet_id: prev.length, row_count: 0 }]);
+      const newTabs = [...tabs, { title: trimmed, sheet_id: tabs.length, row_count: 0 }];
+      setTabs(newTabs);
+      onTabsUpdated?.(newTabs);
     }
-    await handleTabChange(trimmed);
+    await handleTabClick(trimmed);
     setCustomTabInput('');
     setShowCustomTabInput(false);
   };
@@ -115,7 +174,9 @@ export const GoogleSheetStep: React.FC<GoogleSheetStepProps> = ({
       const demo = await api.getDemoParticipants();
       const demoUrl = 'https://docs.google.com/spreadsheets/d/demo-hackathon-2026/edit';
       setSheetUrl(demoUrl);
-      setTabs([{ title: 'Participants', row_count: demo.total_rows }]);
+      const demoTabs = [{ title: 'Participants', row_count: demo.total_rows }];
+      setTabs(demoTabs);
+      onTabsUpdated?.(demoTabs);
       setSelectedTab('Participants');
       setDataResponse(demo);
       await api.updateProject(project.id, {
@@ -321,17 +382,17 @@ export const GoogleSheetStep: React.FC<GoogleSheetStepProps> = ({
               className="btn btn-primary"
               onClick={() => handleConnect()}
               disabled={connecting || !sheetUrl.trim()}
-              style={{ minWidth: '150px' }}
+              style={{ minWidth: '160px' }}
             >
               {connecting ? (
                 <>
                   <Loader2 size={16} className="spin-animation" />
-                  <span>Connecting...</span>
+                  <span>Fetching Tabs...</span>
                 </>
               ) : (
                 <>
                   <RefreshCw size={15} />
-                  <span>Connect & Fetch Data</span>
+                  <span>Fetch Sheet Tabs</span>
                 </>
               )}
             </button>
@@ -339,20 +400,25 @@ export const GoogleSheetStep: React.FC<GoogleSheetStepProps> = ({
         </div>
 
         {/* Tab selector and access section */}
-        {(tabs.length > 0 || dataResponse) && (
+        {tabs.length > 0 && (
           <div style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: '0.75rem',
+            gap: '0.85rem',
             paddingTop: '0.9rem',
             borderTop: '1px solid var(--border-subtle)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-marine)' }}>
-                <Layers size={16} color="var(--color-teal)" />
-                <span>Select Sheet Tab to Access:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <Layers size={18} color="var(--color-teal)" />
+                <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-marine)' }}>
+                  Tabs in this Google Sheet:
+                </span>
+                <span className="badge badge-seafoam" style={{ fontSize: '0.725rem', padding: '0.2rem 0.6rem' }}>
+                  Click a tab to load & proceed
+                </span>
                 {selectedTab && (
-                  <span className="badge badge-seafoam" style={{ fontSize: '0.75rem', padding: '0.15rem 0.6rem' }}>
+                  <span className="badge badge-dark" style={{ fontSize: '0.725rem', padding: '0.2rem 0.6rem' }}>
                     Active: {selectedTab}
                   </span>
                 )}
@@ -379,33 +445,55 @@ export const GoogleSheetStep: React.FC<GoogleSheetStepProps> = ({
             </div>
 
             {/* Discovered Tab Pills */}
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-              {tabs.map((t) => (
-                <button
-                  type="button"
-                  key={t.title}
-                  onClick={() => handleTabChange(t.title)}
-                  disabled={readingData}
-                  style={{
-                    padding: '0.45rem 1rem',
-                    borderRadius: 'var(--radius-md)',
-                    border: `1.5px solid ${selectedTab === t.title ? 'var(--color-teal)' : 'var(--border-subtle)'}`,
-                    background: selectedTab === t.title ? 'linear-gradient(135deg, var(--color-marine) 0%, var(--color-teal) 100%)' : 'var(--bg-surface-teal)',
-                    color: selectedTab === t.title ? 'var(--color-seafoam)' : 'var(--color-marine)',
-                    fontSize: '0.8125rem',
-                    fontWeight: 700,
-                    cursor: readingData ? 'not-allowed' : 'pointer',
-                    transition: 'all 0.15s ease',
-                    boxShadow: selectedTab === t.title ? '0 2px 8px rgba(17, 45, 50, 0.25)' : 'none',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.35rem'
-                  }}
-                >
-                  <span>{t.title}</span>
-                  {selectedTab === t.title && <span style={{ fontSize: '0.7rem' }}>✓</span>}
-                </button>
-              ))}
+            <div style={{ display: 'flex', gap: '0.55rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              {tabs.map((t) => {
+                const isSelected = selectedTab.toLowerCase() === t.title.toLowerCase();
+                const isLoadingThis = loadingTab === t.title;
+                return (
+                  <button
+                    type="button"
+                    key={t.title}
+                    onClick={() => handleTabClick(t.title)}
+                    disabled={readingData}
+                    title={`Click to load "${t.title}" and proceed to Field Mapping`}
+                    style={{
+                      padding: '0.5rem 1.15rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: `1.5px solid ${isSelected ? 'var(--color-teal)' : 'var(--border-subtle)'}`,
+                      background: isSelected
+                        ? 'linear-gradient(135deg, var(--color-marine) 0%, var(--color-teal) 100%)'
+                        : 'var(--bg-surface-teal)',
+                      color: isSelected ? 'var(--color-seafoam)' : 'var(--color-marine)',
+                      fontSize: '0.85rem',
+                      fontWeight: 700,
+                      cursor: readingData ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.15s ease',
+                      boxShadow: isSelected ? '0 2px 8px rgba(17, 45, 50, 0.25)' : 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.45rem'
+                    }}
+                  >
+                    {isLoadingThis ? (
+                      <Loader2 size={14} className="spin-animation" />
+                    ) : (
+                      <Table size={14} />
+                    )}
+                    <span>{t.title}</span>
+                    {t.row_count !== undefined && t.row_count > 0 && (
+                      <span style={{
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        opacity: 0.85,
+                        marginLeft: '2px'
+                      }}>
+                        ({t.row_count})
+                      </span>
+                    )}
+                    {isSelected && !isLoadingThis && <span style={{ fontSize: '0.75rem' }}>✓</span>}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Custom Tab Input row if user wants a specific tab not listed */}

@@ -1,5 +1,6 @@
-import React from 'react';
-import { Award, ChevronRight, Plus, Home } from 'lucide-react';
+import React, { useState } from 'react';
+import { Award, ChevronRight, Plus, Home, Server } from 'lucide-react';
+import { ServerSettingsModal } from '../components/ServerSettingsModal';
 
 interface NavbarProps {
   currentProjectName?: string;
@@ -12,7 +13,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentProjectName,
   onNavigateHome,
   onOpenNewProjectModal,
+  onServerUpdated,
 }) => {
+  const [isServerModalOpen, setIsServerModalOpen] = useState(false);
   return (
     <header style={{
       borderBottom: '1.5px solid var(--border-subtle)',
@@ -62,26 +65,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             }}>
               <Award size={20} />
             </div>
-            <div>
-              <div style={{
-                fontFamily: 'var(--font-heading)',
-                fontSize: '1.15rem',
-                fontWeight: 800,
-                color: 'var(--color-marine)',
-                lineHeight: 1.15,
-                letterSpacing: '-0.02em'
-              }}>
-                Arjava
-              </div>
-              <div style={{
-                fontSize: '0.675rem',
-                fontWeight: 600,
-                color: 'var(--color-teal)',
-                letterSpacing: '0.04em',
-                textTransform: 'uppercase'
-              }}>
-                Certificate Engine
-              </div>
+            <div style={{
+              fontFamily: 'var(--font-heading)',
+              fontSize: '1.2rem',
+              fontWeight: 800,
+              color: 'var(--color-marine)',
+              lineHeight: 1.2,
+              letterSpacing: '-0.02em',
+              whiteSpace: 'nowrap'
+            }}>
+              Arjava Certify Studio
             </div>
           </button>
 
@@ -125,7 +118,18 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Right Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          <button
+            type="button"
+            onClick={() => setIsServerModalOpen(true)}
+            className="btn btn-secondary btn-sm"
+            style={{ padding: '0.45rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem' }}
+            title="Configure Backend API Server URL"
+          >
+            <Server size={14} color="var(--color-teal)" />
+            <span>API Server</span>
+          </button>
+
           <button
             onClick={onOpenNewProjectModal}
             className="btn btn-primary"
@@ -136,6 +140,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         </div>
       </div>
+
+      <ServerSettingsModal
+        isOpen={isServerModalOpen}
+        onClose={() => setIsServerModalOpen(false)}
+        onServerUpdated={() => {
+          onServerUpdated?.();
+          window.location.reload();
+        }}
+      />
     </header>
   );
 };
