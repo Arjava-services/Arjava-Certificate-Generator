@@ -44,6 +44,7 @@ export interface FieldMapping {
   opacity?: number;
   text_case?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
   letter_spacing?: number;
+  text_effect?: 'none' | 'soft' | 'drop' | 'glow' | 'outline';
   x_pos: number;
   y_pos: number;
   width: number;

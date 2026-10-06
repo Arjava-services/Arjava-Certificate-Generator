@@ -3,6 +3,7 @@ import csv
 import io
 import json
 import logging
+import urllib.parse
 from typing import List, Dict, Any, Tuple, Optional
 import httpx
 from app.config.settings import settings
@@ -104,19 +105,42 @@ class GoogleSheetsService:
         return "Connected Spreadsheet", tabs
 
     def _fetch_public_tabs(self, spreadsheet_id: str) -> List[Dict[str, Any]]:
-        """Discover tabs for a shared spreadsheet via gviz/tq endpoint."""
+        """Discover tabs for a shared spreadsheet via edit HTML or gviz endpoint."""
+        # 1. Try discovering tabs from Google Sheets public web interface
+        try:
+            edit_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit"
+            with httpx.Client(timeout=10.0, follow_redirects=True) as client:
+                res = client.get(edit_url)
+                if res.status_code == 200:
+                    text = res.text
+                    # Extract tab titles rendered by Google Sheets UI
+                    titles = re.findall(r'docs-sheet-tab-caption[\x22\x27]>([^<]+)<', text)
+                    if titles:
+                        unique_titles = []
+                        seen = set()
+                        for t in titles:
+                            t_clean = t.strip()
+                            if t_clean and t_clean not in seen:
+                                seen.add(t_clean)
+                                unique_titles.append(t_clean)
+                        if unique_titles:
+                            return [
+                                {"title": title, "sheet_id": idx, "row_count": 0}
+                                for idx, title in enumerate(unique_titles)
+                            ]
+        except Exception as e:
+            logger.warning(f"Public edit page tab discovery failed: {e}")
+
+        # 2. Fallback to gviz discovery endpoint
         try:
             url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/gviz/tq?tqx=out:json"
             with httpx.Client(timeout=10.0, follow_redirects=True) as client:
                 res = client.get(url)
                 if res.status_code == 200:
-                    # Parse gviz response
                     text = res.text
-                    # Gviz returns /*O_o*/\ngoogle.visualization.Query.setResponse({...});
                     json_str_match = re.search(r'setResponse\((.*)\);', text)
                     if json_str_match:
                         data = json.loads(json_str_match.group(1))
-                        # Default primary tab
                         return [{"title": "Sheet1", "sheet_id": 0, "row_count": len(data.get("table", {}).get("rows", [])) + 1}]
         except Exception as e:
             logger.warning(f"Gviz discovery failed: {e}")
@@ -156,12 +180,12 @@ class GoogleSheetsService:
                 err_str = str(e).lower()
                 logger.warning(f"API read failed: {e}. Trying public CSV export.")
                 if "403" in err_str or "permission" in err_str:
-                    # Provide informative message if public export also fails
                     pass
 
         # Fallback to public CSV export URL
         # e.g., https://docs.google.com/spreadsheets/d/<ID>/gviz/tq?tqx=out:csv&sheet=<tab_name>
-        csv_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/gviz/tq?tqx=out:csv&sheet={httpx.URL(tab_name).raw_path.decode('utf-8', 'ignore')}"
+        quoted_tab = urllib.parse.quote(tab_name)
+        csv_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/gviz/tq?tqx=out:csv&sheet={quoted_tab}"
         try:
             with httpx.Client(timeout=15.0, follow_redirects=True) as client:
                 resp = client.get(csv_url)

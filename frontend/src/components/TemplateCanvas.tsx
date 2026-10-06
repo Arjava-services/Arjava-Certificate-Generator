@@ -13,6 +13,8 @@ import {
   Maximize2,
   Crosshair,
   Type,
+  Plus,
+  Trash2,
   AlignHorizontalJustifyCenter,
   AlignVerticalJustifyCenter
 } from 'lucide-react';
@@ -26,7 +28,30 @@ interface TemplateCanvasProps {
   sampleData?: Record<string, any>;
   showSamplePreview?: boolean;
   onToggleSamplePreview?: (val: boolean) => void;
+  onAddText?: () => void;
+  onCenterHorizontal?: (placeholder: string) => void;
+  onCenterVertical?: (placeholder: string) => void;
+  onDeleteField?: (placeholder: string) => void;
 }
+
+export const cleanFieldName = (ph: string) => {
+  return ph.replace(/^\{\{|\}\}$/g, '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).trim();
+};
+
+export const getTextShadowCss = (effect?: string) => {
+  switch (effect) {
+    case 'soft':
+      return '0 2px 6px rgba(0, 0, 0, 0.35)';
+    case 'drop':
+      return '2px 2px 0px rgba(0, 0, 0, 0.65)';
+    case 'glow':
+      return '0 0 10px rgba(234, 179, 8, 0.8), 0 0 3px rgba(255, 255, 255, 0.9)';
+    case 'outline':
+      return '-1px -1px 0 #FFFFFF, 1px -1px 0 #FFFFFF, -1px 1px 0 #FFFFFF, 1px 1px 0 #FFFFFF';
+    default:
+      return 'none';
+  }
+};
 
 export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
   project,
@@ -37,6 +62,10 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
   sampleData,
   showSamplePreview = true,
   onToggleSamplePreview,
+  onAddText,
+  onCenterHorizontal,
+  onCenterVertical,
+  onDeleteField,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -233,6 +262,24 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
 
         {/* Right: Controls & Toggles */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {onAddText && (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={onAddText}
+              style={{
+                padding: '0.35rem 0.8rem',
+                fontSize: '0.775rem',
+                gap: '0.35rem',
+                boxShadow: '0 2px 6px rgba(17, 45, 50, 0.25)'
+              }}
+              title="Add a new custom text element directly to this certificate"
+            >
+              <Plus size={14} />
+              <span>Add Text</span>
+            </button>
+          )}
+
           {/* Preview Mode Switch */}
           {onToggleSamplePreview && (
             <div style={{
@@ -535,13 +582,12 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
             const leftPct = (m.x_pos / templateWidth) * 100;
             const topPct = (m.y_pos / templateHeight) * 100;
 
-            const isNearCenterX = Math.abs(m.x_pos - centerX) < 6;
-            const isNearCenterY = Math.abs(m.y_pos - centerY) < 6;
-
             const displayText = getDisplayText(m);
             const domFontSize = Math.max(9, Math.round((m.font_size || 24) * scaleRatio));
             const opacityVal = m.opacity !== undefined ? m.opacity : 1.0;
             const letterSpacingPx = m.letter_spacing ? `${Math.round(m.letter_spacing * scaleRatio)}px` : 'normal';
+            const textShadowVal = getTextShadowCss(m.text_effect);
+            const displayName = cleanFieldName(m.placeholder);
 
             if (showSamplePreview) {
               // Real typography preview mode
@@ -573,38 +619,103 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
                     color: m.font_color || '#112D32',
                     opacity: opacityVal,
                     letterSpacing: letterSpacingPx,
+                    textShadow: textShadowVal,
+                    textTransform: m.text_case || 'none',
                     whiteSpace: 'nowrap',
                     transition: isDragging ? 'none' : 'box-shadow 0.15s ease, border-color 0.15s ease',
                   }}
-                  title={`Click & drag to reposition ${m.placeholder} (${Math.round(m.x_pos)}, ${Math.round(m.y_pos)}) pt`}
+                  title={`Click & drag to reposition ${displayName} (${Math.round(m.x_pos)}, ${Math.round(m.y_pos)}) pt`}
                 >
-                  {/* Floating tag pill when selected */}
+                  {/* Floating tag pill with quick actions when selected */}
                   {isSelected && (
                     <div
                       style={{
                         position: 'absolute',
-                        top: '-24px',
+                        top: '-32px',
                         left: '50%',
                         transform: 'translateX(-50%)',
                         background: 'linear-gradient(135deg, var(--color-marine) 0%, var(--color-teal) 100%)',
                         color: 'var(--color-seafoam)',
-                        padding: '2px 8px',
-                        borderRadius: '4px',
-                        fontSize: '10px',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        fontSize: '11px',
                         fontWeight: 700,
-                        fontFamily: 'var(--font-mono)',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '4px',
-                        boxShadow: '0 2px 6px rgba(17, 45, 50, 0.3)',
-                        pointerEvents: 'none',
+                        gap: '6px',
+                        boxShadow: '0 3px 10px rgba(17, 45, 50, 0.35)',
                         whiteSpace: 'nowrap',
+                        zIndex: 50,
                       }}
                     >
-                      <span>{m.placeholder}</span>
-                      <span style={{ opacity: 0.8 }}>({Math.round(m.x_pos)}, {Math.round(m.y_pos)})</span>
-                      {isNearCenterX && <span style={{ color: '#FCD34D' }}>• Horiz Centered</span>}
-                      {isNearCenterY && <span style={{ color: '#FCD34D' }}>• Vert Centered</span>}
+                      <span style={{ color: '#FFFFFF' }}>{displayName}</span>
+                      <span style={{ opacity: 0.8, fontSize: '10px' }}>({Math.round(m.x_pos)}, {Math.round(m.y_pos)})</span>
+                      {onCenterHorizontal && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCenterHorizontal(m.placeholder);
+                          }}
+                          title="Center Horizontally"
+                          style={{
+                            background: 'rgba(255, 255, 255, 0.15)',
+                            border: 'none',
+                            color: '#FFFFFF',
+                            borderRadius: '3px',
+                            cursor: 'pointer',
+                            padding: '2px 4px',
+                            display: 'flex',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <AlignHorizontalJustifyCenter size={11} />
+                        </button>
+                      )}
+                      {onCenterVertical && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCenterVertical(m.placeholder);
+                          }}
+                          title="Center Vertically"
+                          style={{
+                            background: 'rgba(255, 255, 255, 0.15)',
+                            border: 'none',
+                            color: '#FFFFFF',
+                            borderRadius: '3px',
+                            cursor: 'pointer',
+                            padding: '2px 4px',
+                            display: 'flex',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <AlignVerticalJustifyCenter size={11} />
+                        </button>
+                      )}
+                      {onDeleteField && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteField(m.placeholder);
+                          }}
+                          title="Delete Field"
+                          style={{
+                            background: 'rgba(239, 68, 68, 0.35)',
+                            border: 'none',
+                            color: '#FCA5A5',
+                            borderRadius: '3px',
+                            cursor: 'pointer',
+                            padding: '2px 4px',
+                            display: 'flex',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      )}
                     </div>
                   )}
 
@@ -623,7 +734,7 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
                   left: `${leftPct}%`,
                   top: `${topPct}%`,
                   transform: 'translate(-50%, -50%)',
-                  padding: '0.35rem 0.8rem',
+                  padding: '0.4rem 0.85rem',
                   borderRadius: '8px',
                   background: isSelected
                     ? 'linear-gradient(135deg, var(--color-marine) 0%, var(--color-teal) 100%)'
@@ -641,14 +752,15 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
                   gap: '0.45rem',
                   fontSize: `${Math.max(11, Math.min(15, (m.font_size || 24) * 0.45))}px`,
                   fontWeight: 700,
+                  opacity: opacityVal,
                   zIndex: isSelected ? 35 : 25,
                   transition: isDragging ? 'none' : 'box-shadow 0.2s, border-color 0.2s',
                   whiteSpace: 'nowrap',
                 }}
-                title={`Drag to reposition ${m.placeholder}`}
+                title={`Drag to reposition ${displayName}`}
               >
                 <Sparkles size={13} color={isSelected ? 'var(--color-seafoam)' : 'var(--color-teal)'} />
-                <span style={{ fontFamily: 'var(--font-mono)' }}>{m.placeholder}</span>
+                <span style={{ fontWeight: 700 }}>{displayName}</span>
                 {m.sheet_column ? (
                   <span
                     style={{
@@ -676,6 +788,29 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
                   >
                     Unmapped
                   </span>
+                )}
+                {isSelected && onDeleteField && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteField(m.placeholder);
+                    }}
+                    title="Delete Field"
+                    style={{
+                      background: 'rgba(239, 68, 68, 0.35)',
+                      border: 'none',
+                      color: '#FCA5A5',
+                      borderRadius: '3px',
+                      cursor: 'pointer',
+                      padding: '2px 4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      marginLeft: '2px'
+                    }}
+                  >
+                    <Trash2 size={11} />
+                  </button>
                 )}
               </div>
             );

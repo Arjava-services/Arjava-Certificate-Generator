@@ -118,13 +118,13 @@ class TemplateService:
         return (template_filename, ext.lstrip("."), preview_filename, float(width), float(height), detected)
 
     def _get_default_placeholders(self, width: float, height: float) -> List[PlaceholderInfo]:
-        """Returns standard certificate placeholder positions (name, competition, position, year, date)."""
+        """Returns only 2 standard certificate placeholder positions (Name, Title)."""
         center_x = round(width / 2.0, 1)
         return [
             PlaceholderInfo(
                 placeholder="{{name}}",
                 x_pos=center_x,
-                y_pos=round(height * 0.44, 1),
+                y_pos=round(height * 0.46, 1),
                 width=round(width * 0.7, 1),
                 height=round(height * 0.08, 1),
                 font_name="Helvetica",
@@ -132,43 +132,13 @@ class TemplateService:
                 alignment="center"
             ),
             PlaceholderInfo(
-                placeholder="{{competition}}",
+                placeholder="{{title}}",
                 x_pos=center_x,
-                y_pos=round(height * 0.58, 1),
+                y_pos=round(height * 0.60, 1),
                 width=round(width * 0.6, 1),
                 height=round(height * 0.06, 1),
                 font_name="Helvetica",
                 font_size=22,
-                alignment="center"
-            ),
-            PlaceholderInfo(
-                placeholder="{{position}}",
-                x_pos=center_x,
-                y_pos=round(height * 0.67, 1),
-                width=round(width * 0.4, 1),
-                height=round(height * 0.05, 1),
-                font_name="Helvetica",
-                font_size=20,
-                alignment="center"
-            ),
-            PlaceholderInfo(
-                placeholder="{{year}}",
-                x_pos=round(width * 0.75, 1),
-                y_pos=round(height * 0.82, 1),
-                width=round(width * 0.2, 1),
-                height=round(height * 0.05, 1),
-                font_name="Helvetica",
-                font_size=18,
-                alignment="center"
-            ),
-            PlaceholderInfo(
-                placeholder="{{date}}",
-                x_pos=round(width * 0.25, 1),
-                y_pos=round(height * 0.82, 1),
-                width=round(width * 0.2, 1),
-                height=round(height * 0.05, 1),
-                font_name="Helvetica",
-                font_size=18,
                 alignment="center"
             ),
         ]

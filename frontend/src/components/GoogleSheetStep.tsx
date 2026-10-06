@@ -10,7 +10,9 @@ import {
   Sparkles,
   RefreshCw,
   ArrowRight,
-  Eye
+  Eye,
+  Plus,
+  Layers,
 } from 'lucide-react';
 
 interface GoogleSheetStepProps {
@@ -35,6 +37,8 @@ export const GoogleSheetStep: React.FC<GoogleSheetStepProps> = ({
 
   const [tabs, setTabs] = useState<SheetTabInfo[]>([]);
   const [selectedTab, setSelectedTab] = useState<string>(initialTabName || project.sheet_tab_name || '');
+  const [customTabInput, setCustomTabInput] = useState<string>('');
+  const [showCustomTabInput, setShowCustomTabInput] = useState<boolean>(false);
   const [dataResponse, setDataResponse] = useState<SheetDataResponse | null>(null);
 
   const [templateImgSrc, setTemplateImgSrc] = useState(
@@ -52,9 +56,11 @@ export const GoogleSheetStep: React.FC<GoogleSheetStepProps> = ({
     try {
       const res: SheetConnectResponse = await api.connectSheet(urlToConnect.trim());
       setTabs(res.tabs);
-      const defaultTab = res.tabs.length > 0 ? res.tabs[0].title : 'Sheet1';
+      // If project or initial tab was set and exists in tabs, keep it; otherwise use first tab
+      const foundInitial = res.tabs.find((t) => t.title.toLowerCase() === (initialTabName || project.sheet_tab_name || '').toLowerCase());
+      const defaultTab = foundInitial ? foundInitial.title : (res.tabs.length > 0 ? res.tabs[0].title : 'Sheet1');
       setSelectedTab(defaultTab);
-      // Auto-fetch data for first tab
+      // Auto-fetch data for the selected tab
       await fetchTabData(urlToConnect.trim(), defaultTab);
     } catch (err: any) {
       setError(err.message || 'Failed to connect to Google Sheet.');
@@ -64,20 +70,22 @@ export const GoogleSheetStep: React.FC<GoogleSheetStepProps> = ({
   };
 
   const fetchTabData = async (url: string, tab: string) => {
+    if (!tab.trim()) return;
     setReadingData(true);
     setError(null);
     try {
-      const data = await api.getSheetData(url, tab);
+      const data = await api.getSheetData(url, tab.trim());
       setDataResponse(data);
+      setSelectedTab(tab.trim());
       // Persist to project
       await api.updateProject(project.id, {
         sheet_url: url,
         sheet_id: data.spreadsheet_id,
-        sheet_tab_name: tab,
+        sheet_tab_name: tab.trim(),
       });
-      onDataLoaded(data.headers, data.all_rows || data.preview_rows, url, tab);
+      onDataLoaded(data.headers, data.all_rows || data.preview_rows, url, tab.trim());
     } catch (err: any) {
-      setError(err.message || 'Failed to read data from sheet tab.');
+      setError(err.message || `Failed to read data from sheet tab '${tab}'. Make sure the tab name is spelled correctly.`);
     } finally {
       setReadingData(false);
     }
@@ -86,6 +94,18 @@ export const GoogleSheetStep: React.FC<GoogleSheetStepProps> = ({
   const handleTabChange = async (newTab: string) => {
     setSelectedTab(newTab);
     await fetchTabData(sheetUrl, newTab);
+  };
+
+  const handleLoadCustomTab = async () => {
+    const trimmed = customTabInput.trim();
+    if (!trimmed) return;
+    // Add to tabs if not already present
+    if (!tabs.some((t) => t.title.toLowerCase() === trimmed.toLowerCase())) {
+      setTabs((prev) => [...prev, { title: trimmed, sheet_id: prev.length, row_count: 0 }]);
+    }
+    await handleTabChange(trimmed);
+    setCustomTabInput('');
+    setShowCustomTabInput(false);
   };
 
   const handleLoadDemo = async () => {
@@ -318,42 +338,116 @@ export const GoogleSheetStep: React.FC<GoogleSheetStepProps> = ({
           </div>
         </div>
 
-        {/* Tab selector */}
-        {tabs.length > 0 && (
+        {/* Tab selector and access section */}
+        {(tabs.length > 0 || dataResponse) && (
           <div style={{
             display: 'flex',
-            alignItems: 'center',
-            gap: '1rem',
-            paddingTop: '0.75rem',
+            flexDirection: 'column',
+            gap: '0.75rem',
+            paddingTop: '0.9rem',
             borderTop: '1px solid var(--border-subtle)',
-            flexWrap: 'wrap'
           }}>
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-marine)' }}>
-              Spreadsheet Tab:
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-marine)' }}>
+                <Layers size={16} color="var(--color-teal)" />
+                <span>Select Sheet Tab to Access:</span>
+                {selectedTab && (
+                  <span className="badge badge-seafoam" style={{ fontSize: '0.75rem', padding: '0.15rem 0.6rem' }}>
+                    Active: {selectedTab}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCustomTabInput(!showCustomTabInput)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--color-teal)',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  padding: '2px 6px',
+                }}
+              >
+                <Plus size={13} />
+                <span>{showCustomTabInput ? 'Cancel' : 'Enter Different Tab Name'}</span>
+              </button>
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+
+            {/* Discovered Tab Pills */}
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
               {tabs.map((t) => (
                 <button
                   type="button"
                   key={t.title}
                   onClick={() => handleTabChange(t.title)}
+                  disabled={readingData}
                   style={{
-                    padding: '0.45rem 0.95rem',
+                    padding: '0.45rem 1rem',
                     borderRadius: 'var(--radius-md)',
                     border: `1.5px solid ${selectedTab === t.title ? 'var(--color-teal)' : 'var(--border-subtle)'}`,
                     background: selectedTab === t.title ? 'linear-gradient(135deg, var(--color-marine) 0%, var(--color-teal) 100%)' : 'var(--bg-surface-teal)',
                     color: selectedTab === t.title ? 'var(--color-seafoam)' : 'var(--color-marine)',
                     fontSize: '0.8125rem',
                     fontWeight: 700,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                    boxShadow: selectedTab === t.title ? '0 2px 8px rgba(17, 45, 50, 0.25)' : 'none'
+                    cursor: readingData ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s ease',
+                    boxShadow: selectedTab === t.title ? '0 2px 8px rgba(17, 45, 50, 0.25)' : 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
                   }}
                 >
-                  {t.title}
+                  <span>{t.title}</span>
+                  {selectedTab === t.title && <span style={{ fontSize: '0.7rem' }}>✓</span>}
                 </button>
               ))}
             </div>
+
+            {/* Custom Tab Input row if user wants a specific tab not listed */}
+            {showCustomTabInput && (
+              <div style={{
+                display: 'flex',
+                gap: '0.5rem',
+                alignItems: 'center',
+                background: 'var(--bg-surface-teal)',
+                padding: '0.65rem 0.85rem',
+                borderRadius: 'var(--radius-md)',
+                border: '1px dashed var(--border-subtle)',
+                marginTop: '0.25rem'
+              }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                  Tab Name:
+                </span>
+                <input
+                  type="text"
+                  className="input-text"
+                  placeholder="e.g. Sheet2, Finalists, Batch 1"
+                  value={customTabInput}
+                  onChange={(e) => setCustomTabInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleLoadCustomTab();
+                    }
+                  }}
+                  style={{ flex: 1, maxWidth: '280px', padding: '0.35rem 0.65rem', fontSize: '0.8rem' }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={handleLoadCustomTab}
+                  disabled={readingData || !customTabInput.trim()}
+                  style={{ padding: '0.35rem 0.85rem' }}
+                >
+                  <span>Load Tab</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

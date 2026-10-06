@@ -3,7 +3,6 @@ import type { FieldMapping, ProjectDetail } from '../types';
 import { api } from '../services/api';
 import { TemplateCanvas } from './TemplateCanvas';
 import {
-  Sparkles,
   Plus,
   Trash2,
   Check,
@@ -23,10 +22,13 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  AlertTriangle,
   AlignHorizontalJustifyCenter,
   AlignVerticalJustifyCenter,
 } from 'lucide-react';
+
+export const cleanFieldName = (name: string): string => {
+  return (name || '').replace(/^\{\{|\}\}$/g, '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).trim();
+};
 
 interface FieldMappingStepProps {
   project: ProjectDetail;
@@ -97,15 +99,6 @@ const COLOR_SWATCHES = [
 
 const QUICK_FONT_SIZES = [16, 20, 24, 30, 36, 44, 56, 72];
 
-const COMMON_PLACEHOLDERS = [
-  '{{name}}',
-  '{{course}}',
-  '{{date}}',
-  '{{grade}}',
-  '{{cert_id}}',
-  '{{organization}}'
-];
-
 export const FieldMappingStep: React.FC<FieldMappingStepProps> = ({
   project,
   mappings,
@@ -115,8 +108,46 @@ export const FieldMappingStep: React.FC<FieldMappingStepProps> = ({
   onProceedToPreview,
 }) => {
   const [currentMappings, setCurrentMappings] = useState<FieldMapping[]>(() => {
-    // Ensure all fields have sensible default style values
-    return mappings.map((m) => ({
+    let list = mappings;
+    // If mappings has the old default 5 placeholders and none are mapped yet, keep only 2 items!
+    if (list.length > 2 && list.every((m) => !m.sheet_column)) {
+      const oldPlaceholders = ['{{name}}', '{{competition}}', '{{position}}', '{{year}}', '{{date}}'];
+      const isOldDefaults = list.every((m) => oldPlaceholders.includes(m.placeholder.toLowerCase()));
+      if (isOldDefaults) {
+        list = list.slice(0, 2);
+      }
+    }
+    // If sheet headers exist and list has unmapped fields, auto-assign first 2 sheet columns
+    if (headers && headers.length > 0) {
+      if (list.length === 0) {
+        list = headers.slice(0, 2).map((h, i) => ({
+          placeholder: `{{${h.toLowerCase().replace(/\s+/g, '_')}}}`,
+          sheet_column: h,
+          font_family: i === 0 ? 'Playfair Display' : 'Montserrat',
+          font_size: i === 0 ? 32 : 22,
+          font_color: '#112D32',
+          font_weight: i === 0 ? 'bold' : 'normal',
+          is_italic: false,
+          opacity: 1.0,
+          text_case: 'none',
+          letter_spacing: 0,
+          text_effect: 'none',
+          x_pos: Math.round((project.template_width || 842) / 2),
+          y_pos: Math.round((project.template_height || 595) * (i === 0 ? 0.46 : 0.60)),
+          width: 320,
+          height: 44,
+          alignment: 'center' as const,
+          is_auto_detected: false,
+          is_required: true,
+        }));
+      } else if (list.length <= 2 && list.every((m) => !m.sheet_column)) {
+        list = list.map((m, idx) => ({
+          ...m,
+          sheet_column: headers[idx] || null,
+        }));
+      }
+    }
+    return list.map((m) => ({
       ...m,
       font_family: m.font_family || 'Playfair Display',
       font_weight: m.font_weight || 'normal',
@@ -124,13 +155,28 @@ export const FieldMappingStep: React.FC<FieldMappingStepProps> = ({
       opacity: m.opacity !== undefined ? m.opacity : 1.0,
       text_case: m.text_case || 'none',
       letter_spacing: m.letter_spacing !== undefined ? m.letter_spacing : 0,
+      text_effect: m.text_effect || 'none',
     }));
   });
 
   // Sync mappings if loaded asynchronously
   React.useEffect(() => {
     if (mappings && mappings.length > 0 && currentMappings.length === 0) {
-      setCurrentMappings(mappings.map((m) => ({
+      let list = mappings;
+      if (list.length > 2 && list.every((m) => !m.sheet_column)) {
+        const oldPlaceholders = ['{{name}}', '{{competition}}', '{{position}}', '{{year}}', '{{date}}'];
+        const isOldDefaults = list.every((m) => oldPlaceholders.includes(m.placeholder.toLowerCase()));
+        if (isOldDefaults) {
+          list = list.slice(0, 2);
+        }
+      }
+      if (headers && headers.length > 0 && list.length <= 2 && list.every((m) => !m.sheet_column)) {
+        list = list.map((m, idx) => ({
+          ...m,
+          sheet_column: headers[idx] || null,
+        }));
+      }
+      const formatted = list.map((m) => ({
         ...m,
         font_family: m.font_family || 'Playfair Display',
         font_weight: m.font_weight || 'normal',
@@ -138,9 +184,11 @@ export const FieldMappingStep: React.FC<FieldMappingStepProps> = ({
         opacity: m.opacity !== undefined ? m.opacity : 1.0,
         text_case: m.text_case || 'none',
         letter_spacing: m.letter_spacing !== undefined ? m.letter_spacing : 0,
-      })));
-      if (mappings[0]) {
-        setSelectedPlaceholder(mappings[0].placeholder);
+        text_effect: m.text_effect || 'none',
+      }));
+      setCurrentMappings(formatted);
+      if (formatted[0]) {
+        setSelectedPlaceholder(formatted[0].placeholder);
       }
     }
   }, [mappings]);
@@ -222,51 +270,52 @@ export const FieldMappingStep: React.FC<FieldMappingStepProps> = ({
     updateCoordinates(selectedMapping.placeholder, selectedMapping.x_pos, centerY);
   };
 
-  const handleAddPlaceholder = (placeholderName?: string) => {
-    let ph = (placeholderName || newPlaceholderInput).trim();
-    if (!ph) return;
-    if (!ph.startsWith('{{')) ph = `{{${ph}`;
-    if (!ph.endsWith('}}')) ph = `${ph}}}`;
+  const handleAddCustomText = (textValue?: string) => {
+    let name = (textValue || newPlaceholderInput).trim();
+    if (!name) name = `Text ${currentMappings.length + 1}`;
 
-    if (currentMappings.some((m) => m.placeholder.toLowerCase() === ph.toLowerCase())) {
-      setSelectedPlaceholder(ph);
-      setNewPlaceholderInput('');
-      return;
+    let ph = name;
+    if (!ph.startsWith('{{')) ph = `{{${ph}}}`;
+
+    let uniqueKey = ph;
+    let counter = 2;
+    while (currentMappings.some((m) => m.placeholder.toLowerCase() === uniqueKey.toLowerCase())) {
+      uniqueKey = `{{${name}_${counter}}}`;
+      counter++;
     }
 
-    // Try auto-matching with headers
-    const innerName = ph.replace(/[{}]/g, '').toLowerCase();
+    const cleanInput = name.replace(/[{}]/g, '').toLowerCase();
     const matchedCol = headers.find(
-      (h) => h.toLowerCase() === innerName || h.toLowerCase().includes(innerName)
+      (h) => h.toLowerCase() === cleanInput || h.toLowerCase().includes(cleanInput)
     );
 
-    // Stagger new fields nicely down the center of the canvas
-    const offsetY = 200 + (currentMappings.length % 5) * 50;
+    const offsetY = Math.min(templateHeight - 70, 200 + (currentMappings.length % 5) * 50);
 
     const newMapping: FieldMapping = {
-      placeholder: ph,
+      placeholder: uniqueKey,
       sheet_column: matchedCol || null,
-      font_family: innerName.includes('name') ? 'Playfair Display' : 'Montserrat',
-      font_size: innerName.includes('name') ? 32 : 22,
+      font_family: cleanInput.includes('name') ? 'Playfair Display' : 'Inter',
+      font_size: cleanInput.includes('name') ? 32 : 24,
       font_color: '#112D32',
-      font_weight: innerName.includes('name') ? 'bold' : 'normal',
+      font_weight: cleanInput.includes('name') ? 'bold' : 'normal',
       is_italic: false,
       opacity: 1.0,
       text_case: 'none',
       letter_spacing: 0,
+      text_effect: 'none',
       x_pos: centerX,
-      y_pos: Math.min(templateHeight - 60, offsetY),
-      width: 320,
-      height: 44,
+      y_pos: offsetY,
+      width: 340,
+      height: 48,
       alignment: 'center',
       is_auto_detected: false,
-      is_required: true,
+      is_required: false,
     };
 
     const next = [...currentMappings, newMapping];
     setCurrentMappings(next);
     onMappingsUpdated(next);
-    setSelectedPlaceholder(ph);
+    setSelectedPlaceholder(uniqueKey);
     setNewPlaceholderInput('');
   };
 
@@ -299,25 +348,6 @@ export const FieldMappingStep: React.FC<FieldMappingStepProps> = ({
     if (selectedPlaceholder === ph && next.length > 0) {
       setSelectedPlaceholder(next[0].placeholder);
     }
-  };
-
-  const handleSmartAutoMatch = () => {
-    let matchCount = 0;
-    const updated = currentMappings.map((m) => {
-      const cleanKey = m.placeholder.replace(/[{}]/g, '').trim().toLowerCase();
-      const matched = headers.find((h) => {
-        const hClean = h.trim().toLowerCase();
-        return hClean === cleanKey || hClean.includes(cleanKey) || cleanKey.includes(hClean);
-      });
-      if (matched && matched !== m.sheet_column) matchCount++;
-      return {
-        ...m,
-        sheet_column: matched || m.sheet_column || null,
-      };
-    });
-    setCurrentMappings(updated);
-    onMappingsUpdated(updated);
-    alert(`Smart Auto-Match processed! ${matchCount} new column links assigned.`);
   };
 
   const handleSave = async () => {
@@ -418,11 +448,11 @@ export const FieldMappingStep: React.FC<FieldMappingStepProps> = ({
           <button
             type="button"
             className="btn btn-secondary btn-sm"
-            onClick={handleSmartAutoMatch}
-            title="Automatically matches placeholders like {{name}} to sheet column 'Name'"
+            onClick={() => handleAddCustomText()}
+            title="Add a new custom text element to certificate"
           >
-            <Sparkles size={14} color="var(--color-teal)" />
-            <span>Smart Auto-Match</span>
+            <Plus size={14} color="var(--color-teal)" />
+            <span>Add Text</span>
           </button>
 
           <button
@@ -453,17 +483,31 @@ export const FieldMappingStep: React.FC<FieldMappingStepProps> = ({
         </div>
       </div>
 
-      {/* Main Grid: Interactive Canvas on Left, Studio Inspector on Right */}
+      {/* Main Grid: Sticky Canvas on Left, Studio Inspector on Right */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(360px, 1.25fr) minmax(340px, 1fr)',
+          gridTemplateColumns: 'minmax(380px, 1.25fr) minmax(350px, 1fr)',
           gap: '1.5rem',
           alignItems: 'start',
+          position: 'relative',
         }}
       >
-        {/* Left: Interactive Canvas */}
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem' }}>
+        {/* Left: Fixed/Sticky Stage Certificate Canvas */}
+        <div
+          className="card"
+          style={{
+            position: 'sticky',
+            top: '75px',
+            maxHeight: 'calc(100vh - 95px)',
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem',
+            padding: '1.25rem',
+            background: 'var(--bg-surface)',
+          }}
+        >
           <TemplateCanvas
             project={project}
             mappings={currentMappings}
@@ -473,77 +517,98 @@ export const FieldMappingStep: React.FC<FieldMappingStepProps> = ({
             sampleData={sampleRow}
             showSamplePreview={showLivePreview}
             onToggleSamplePreview={setShowLivePreview}
+            onAddText={() => handleAddCustomText()}
+            onCenterHorizontal={centerHorizontally}
+            onCenterVertical={centerVertically}
+            onDeleteField={handleRemovePlaceholder}
           />
         </div>
 
         {/* Right: Studio Controls (Field Mapping List + Advanced Typography Inspector) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', minWidth: 0 }}>
           {/* Card 1: Fields & Column Mapping */}
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', padding: '1.15rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                <Layers size={16} color="var(--color-teal)" />
-                <span style={{ fontWeight: 800, fontSize: '0.925rem', color: 'var(--color-marine)' }}>
-                  Placeholders & Data Columns ({currentMappings.length})
+                <Layers size={17} color="var(--color-teal)" />
+                <span style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--color-marine)' }}>
+                  Certificate Fields & Mapping ({currentMappings.length})
                 </span>
               </div>
-              <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
-                Click a field to edit typography
-              </span>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => handleAddCustomText()}
+                style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', gap: '0.3rem' }}
+              >
+                <Plus size={13} />
+                <span>Add Field</span>
+              </button>
             </div>
 
-            {/* Quick Suggestions for Add Field */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)' }}>Quick Add:</span>
-              {COMMON_PLACEHOLDERS.map((ph) => {
-                const alreadyExists = currentMappings.some((m) => m.placeholder === ph);
-                if (alreadyExists) return null;
-                return (
-                  <button
-                    key={ph}
-                    type="button"
-                    onClick={() => handleAddPlaceholder(ph)}
-                    style={{
-                      background: 'var(--bg-surface-teal)',
-                      border: '1px solid var(--border-subtle)',
-                      borderRadius: '4px',
-                      padding: '2px 7px',
-                      fontSize: '0.7rem',
-                      fontFamily: 'var(--font-mono)',
-                      color: 'var(--color-teal)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '2px',
-                    }}
-                    title={`Add ${ph}`}
-                  >
-                    <Plus size={10} />
-                    <span>{ph}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {/* Suggestions from Google Sheet Columns */}
+            {headers && headers.length > 0 && (
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '0.35rem',
+                alignItems: 'center',
+                background: 'var(--bg-surface-teal)',
+                padding: '0.45rem 0.65rem',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border-subtle)',
+              }}>
+                <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-marine)' }}>Sheet Columns:</span>
+                {headers.map((h) => {
+                  const isUsed = currentMappings.some((m) => m.sheet_column === h);
+                  return (
+                    <button
+                      key={h}
+                      type="button"
+                      onClick={() => handleAddCustomText(h)}
+                      style={{
+                        background: isUsed ? '#FFFFFF' : 'rgba(37, 78, 88, 0.08)',
+                        border: `1px solid ${isUsed ? 'var(--border-subtle)' : 'var(--color-teal)'}`,
+                        borderRadius: '4px',
+                        padding: '2px 7px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        color: isUsed ? 'var(--text-muted)' : 'var(--color-teal)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                      }}
+                      title={`Add ${h} to certificate`}
+                    >
+                      <Plus size={10} />
+                      <span>{h}</span>
+                      {isUsed && <span style={{ fontSize: '0.65rem', color: '#16A34A' }}>✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Add Custom Field Form */}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                handleAddPlaceholder();
+                handleAddCustomText();
               }}
               style={{ display: 'flex', gap: '0.5rem' }}
             >
               <input
                 type="text"
                 className="input-text"
-                placeholder="Custom placeholder, e.g. {{award_title}}"
+                placeholder="Enter field name (e.g. Recipient Name, Date, Award Title)"
                 value={newPlaceholderInput}
                 onChange={(e) => setNewPlaceholderInput(e.target.value)}
-                style={{ padding: '0.45rem 0.65rem', fontSize: '0.8125rem' }}
+                style={{ padding: '0.45rem 0.65rem', fontSize: '0.8125rem', flex: 1 }}
               />
               <button
                 type="submit"
-                className="btn btn-secondary btn-sm"
+                className="btn btn-primary btn-sm"
                 disabled={!newPlaceholderInput.trim()}
               >
                 <Plus size={14} />
@@ -551,11 +616,12 @@ export const FieldMappingStep: React.FC<FieldMappingStepProps> = ({
               </button>
             </form>
 
-            {/* List of Mapped Items */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '240px', overflowY: 'auto', paddingRight: '2px' }}>
+            {/* List of Mapped Items with Clean, Understandable Design */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '280px', overflowY: 'auto', paddingRight: '2px' }}>
               {currentMappings.map((m) => {
                 const isSelected = selectedPlaceholder === m.placeholder;
                 const isMapped = Boolean(m.sheet_column);
+                const displayName = m.placeholder.replace(/^\{\{|\}\}$/g, '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).trim();
 
                 return (
                   <div
@@ -563,110 +629,152 @@ export const FieldMappingStep: React.FC<FieldMappingStepProps> = ({
                     onClick={() => setSelectedPlaceholder(m.placeholder)}
                     style={{
                       display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.65rem',
-                      padding: '0.55rem 0.75rem',
-                      background: isSelected
-                        ? 'linear-gradient(135deg, rgba(17, 45, 50, 0.08) 0%, rgba(37, 78, 88, 0.12) 100%)'
-                        : '#FFFFFF',
+                      flexDirection: 'column',
+                      gap: '0.55rem',
+                      padding: '0.75rem 0.85rem',
+                      background: isSelected ? 'var(--bg-surface-teal)' : '#FFFFFF',
                       border: `1.5px solid ${isSelected ? 'var(--color-teal)' : 'var(--border-subtle)'}`,
                       borderRadius: 'var(--radius-md)',
                       cursor: 'pointer',
-                      boxShadow: isSelected ? '0 2px 8px rgba(37, 78, 88, 0.15)' : 'none',
+                      boxShadow: isSelected ? '0 3px 10px rgba(37, 78, 88, 0.15)' : 'none',
                       transition: 'all 0.15s ease',
                     }}
                   >
-                    {/* Placeholder name & font badge */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <span
-                          style={{
-                            fontFamily: 'var(--font-mono)',
+                    {/* Row 1: Field Title + Status Badge + Quick Actions */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', minWidth: 0 }}>
+                        <div style={{
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: '6px',
+                          background: isSelected ? 'linear-gradient(135deg, var(--color-marine) 0%, var(--color-teal) 100%)' : 'rgba(37, 78, 88, 0.08)',
+                          color: isSelected ? 'var(--color-seafoam)' : 'var(--color-teal)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0
+                        }}>
+                          <Type size={13} />
+                        </div>
+                        <span style={{ fontWeight: 800, fontSize: '0.875rem', color: isSelected ? 'var(--color-teal)' : 'var(--color-marine)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {displayName}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        {isMapped ? (
+                          <span style={{
+                            fontSize: '0.675rem',
                             fontWeight: 700,
-                            fontSize: '0.825rem',
-                            color: isSelected ? 'var(--color-teal)' : 'var(--color-marine)',
+                            color: '#065F46',
+                            background: '#ECFDF5',
+                            border: '1px solid #A7F3D0',
+                            padding: '2px 7px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px'
+                          }}>
+                            ✓ {m.sheet_column}
+                          </span>
+                        ) : (
+                          <span style={{
+                            fontSize: '0.675rem',
+                            fontWeight: 600,
+                            color: '#64748B',
+                            background: '#F1F5F9',
+                            border: '1px solid #CBD5E1',
+                            padding: '2px 7px',
+                            borderRadius: '4px'
+                          }}>
+                            Static Text
+                          </span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDuplicatePlaceholder(m);
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--text-muted)',
+                            cursor: 'pointer',
+                            padding: '3px',
+                            borderRadius: '3px',
+                          }}
+                          title="Duplicate Field"
+                        >
+                          <Copy size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemovePlaceholder(m.placeholder);
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#EF4444',
+                            cursor: 'pointer',
+                            padding: '3px',
+                            borderRadius: '3px',
+                          }}
+                          title="Delete Field"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Row 2: Sheet Column Selector + Typography info */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.65rem', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1, minWidth: '160px' }} onClick={(e) => e.stopPropagation()}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, flexShrink: 0 }}>
+                          Column:
+                        </span>
+                        <select
+                          className="select-input"
+                          value={m.sheet_column || ''}
+                          onChange={(e) => updateMappingField(m.placeholder, 'sheet_column', e.target.value || null)}
+                          style={{
+                            padding: '0.3rem 0.5rem',
+                            fontSize: '0.775rem',
+                            background: isMapped ? '#FFFFFF' : 'rgba(245, 158, 11, 0.05)',
+                            borderColor: isMapped ? 'var(--border-subtle)' : '#F59E0B',
+                            color: 'var(--color-marine)',
+                            fontWeight: 600,
+                            width: '100%'
                           }}
                         >
-                          {m.placeholder}
-                        </span>
-                        {!isMapped && (
-                          <span
-                            style={{
-                              fontSize: '0.65rem',
-                              color: '#B45309',
-                              background: 'rgba(245, 158, 11, 0.12)',
-                              padding: '1px 5px',
-                              borderRadius: '3px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '2px',
-                            }}
-                          >
-                            <AlertTriangle size={10} />
-                            <span>Unmapped</span>
+                          <option value="">-- Static Text (No Sheet Column) --</option>
+                          {headers.map((h) => (
+                            <option key={h} value={h}>
+                              Sheet Column: {h}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <span>{m.font_family}</span>
+                        <span>•</span>
+                        <span>{m.font_size}pt</span>
+                        {m.opacity !== undefined && m.opacity < 1 && (
+                          <>
+                            <span>•</span>
+                            <span>{Math.round(m.opacity * 100)}% Opacity</span>
+                          </>
+                        )}
+                        {m.text_effect && m.text_effect !== 'none' && (
+                          <span className="badge badge-seafoam" style={{ fontSize: '0.65rem', padding: '1px 5px' }}>
+                            {m.text_effect}
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        {m.font_family} • {m.font_size}pt {m.font_weight === 'bold' ? '• Bold' : ''} {m.is_italic ? '• Italic' : ''}
-                      </div>
-                    </div>
-
-                    {/* Column Select Dropdown */}
-                    <div style={{ width: '150px' }} onClick={(e) => e.stopPropagation()}>
-                      <select
-                        className="select-input"
-                        value={m.sheet_column || ''}
-                        onChange={(e) => updateMappingField(m.placeholder, 'sheet_column', e.target.value || null)}
-                        style={{
-                          padding: '0.35rem 0.5rem',
-                          fontSize: '0.775rem',
-                          background: isMapped ? 'var(--bg-surface)' : 'rgba(245, 158, 11, 0.08)',
-                          borderColor: isMapped ? 'var(--border-subtle)' : '#F59E0B',
-                          color: 'var(--color-marine)',
-                        }}
-                      >
-                        <option value="">-- Unmapped --</option>
-                        {headers.map((h) => (
-                          <option key={h} value={h}>
-                            {h}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Actions: Duplicate & Delete */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }} onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        onClick={() => handleDuplicatePlaceholder(m)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--text-muted)',
-                          cursor: 'pointer',
-                          padding: '0.25rem',
-                          borderRadius: '4px',
-                        }}
-                        title="Duplicate Field"
-                      >
-                        <Copy size={13} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleRemovePlaceholder(m.placeholder)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--text-muted)',
-                          cursor: 'pointer',
-                          padding: '0.25rem',
-                          borderRadius: '4px',
-                        }}
-                        title="Remove Field"
-                      >
-                        <Trash2 size={13} />
-                      </button>
                     </div>
                   </div>
                 );
@@ -700,7 +808,7 @@ export const FieldMappingStep: React.FC<FieldMappingStepProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                   <Type size={17} color="var(--color-teal)" />
                   <span style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--color-marine)' }}>
-                    Text Editor for <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-teal)' }}>{selectedMapping.placeholder}</span>
+                    Text Editor for <span style={{ color: 'var(--color-teal)' }}>{cleanFieldName(selectedMapping.placeholder)}</span>
                   </span>
                 </div>
                 <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
@@ -1155,6 +1263,73 @@ export const FieldMappingStep: React.FC<FieldMappingStepProps> = ({
                     onChange={(e) => updateMappingField(selectedMapping.placeholder, 'letter_spacing', parseInt(e.target.value) || 0)}
                     style={{ accentColor: 'var(--color-teal)', cursor: 'pointer', width: '100%', marginTop: '0.4rem' }}
                   />
+                </div>
+
+                {/* Text Effect & Shadow Options */}
+                <div className="input-group">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <label className="input-label" style={{ margin: 0, fontSize: '0.8rem', fontWeight: 700 }}>
+                      Text Effect
+                    </label>
+                    <span style={{ fontSize: '0.725rem', color: 'var(--color-teal)', fontWeight: 600, textTransform: 'capitalize' }}>
+                      {selectedMapping.text_effect || 'none'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.35rem', marginTop: '0.4rem' }}>
+                    {[
+                      { id: 'none', label: 'None', preview: 'Plain' },
+                      { id: 'soft', label: 'Soft Shadow', preview: 'Soft' },
+                      { id: 'drop', label: 'Drop Shadow', preview: 'Drop' },
+                      { id: 'glow', label: 'Warm Glow', preview: 'Glow' },
+                      { id: 'outline', label: 'Outline', preview: 'Stroke' },
+                    ].map((eff) => {
+                      const isActive = (selectedMapping.text_effect || 'none') === eff.id;
+                      return (
+                        <button
+                          key={eff.id}
+                          type="button"
+                          onClick={() => updateMappingField(selectedMapping.placeholder, 'text_effect', eff.id as any)}
+                          style={{
+                            padding: '0.45rem 0.2rem',
+                            borderRadius: 'var(--radius-sm)',
+                            border: `1.5px solid ${isActive ? 'var(--color-teal)' : 'var(--border-subtle)'}`,
+                            background: isActive ? 'var(--bg-surface-teal)' : '#FFFFFF',
+                            color: isActive ? 'var(--color-teal)' : 'var(--color-marine)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '3px',
+                            boxShadow: isActive ? '0 0 0 1px var(--color-teal)' : 'none',
+                          }}
+                          title={eff.label}
+                        >
+                          <span
+                            style={{
+                              fontWeight: 700,
+                              fontSize: '0.75rem',
+                              textShadow:
+                                eff.id === 'soft'
+                                  ? '1px 1px 2px rgba(0,0,0,0.35)'
+                                  : eff.id === 'drop'
+                                  ? '2px 2px 3px rgba(0,0,0,0.55)'
+                                  : eff.id === 'glow'
+                                  ? '0 0 4px #F59E0B, 0 0 8px #F59E0B'
+                                  : eff.id === 'outline'
+                                  ? '-1px -1px 0 #94A3B8, 1px -1px 0 #94A3B8, -1px 1px 0 #94A3B8, 1px 1px 0 #94A3B8'
+                                  : 'none',
+                            }}
+                          >
+                            {eff.preview}
+                          </span>
+                          <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.1 }}>
+                            {eff.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 

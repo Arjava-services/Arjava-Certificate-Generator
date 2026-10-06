@@ -1,7 +1,5 @@
-﻿import React, { useState, useEffect } from 'react';
-import { Award, ChevronRight, Plus, Home, Server } from 'lucide-react';
-import { ServerSettingsModal } from '../components/ServerSettingsModal';
-import { checkApiHealth } from '../services/api';
+import React from 'react';
+import { Award, ChevronRight, Plus, Home } from 'lucide-react';
 
 interface NavbarProps {
   currentProjectName?: string;
@@ -14,26 +12,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentProjectName,
   onNavigateHome,
   onOpenNewProjectModal,
-  onServerUpdated,
 }) => {
-  const [isServerModalOpen, setIsServerModalOpen] = useState(false);
-  const [isOnline, setIsOnline] = useState<boolean | null>(null);
-
-  const checkStatus = () => {
-    checkApiHealth().then((res) => setIsOnline(res.ok));
-  };
-
-  useEffect(() => {
-    checkStatus();
-    const interval = setInterval(checkStatus, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleServerUpdated = () => {
-    checkStatus();
-    if (onServerUpdated) onServerUpdated();
-  };
-
   return (
     <header style={{
       borderBottom: '1.5px solid var(--border-subtle)',
@@ -59,54 +38,78 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             onClick={onNavigateHome}
             style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.65rem',
               background: 'none',
               border: 'none',
               cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              color: 'inherit',
               padding: 0,
+              textAlign: 'left'
             }}
           >
             <div style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '11px',
+              width: '38px',
+              height: '38px',
+              borderRadius: '10px',
               background: 'linear-gradient(135deg, var(--color-marine) 0%, var(--color-teal) 100%)',
-              border: '1.5px solid var(--color-seafoam)',
+              color: 'var(--color-seafoam)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 3px 10px rgba(17, 45, 50, 0.25), 0 0 10px rgba(136, 189, 188, 0.25)',
-              transition: 'transform 0.2s, box-shadow 0.2s',
+              boxShadow: '0 2px 8px rgba(17, 45, 50, 0.25)',
+              transition: 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
             }}>
-              <Award size={22} color="var(--color-seafoam)" />
+              <Award size={20} />
             </div>
             <div>
-              <div style={{ fontWeight: 800, fontSize: '1.15rem', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '0.45rem', color: 'var(--color-marine)' }}>
-                <span>Arjava Certify</span>
+              <div style={{
+                fontFamily: 'var(--font-heading)',
+                fontSize: '1.15rem',
+                fontWeight: 800,
+                color: 'var(--color-marine)',
+                lineHeight: 1.15,
+                letterSpacing: '-0.02em'
+              }}>
+                Arjava
               </div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 500 }}>Automated Certificate Studio</div>
+              <div style={{
+                fontSize: '0.675rem',
+                fontWeight: 600,
+                color: 'var(--color-teal)',
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase'
+              }}>
+                Certificate Engine
+              </div>
             </div>
           </button>
 
           {currentProjectName && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-              <ChevronRight size={16} />
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              fontSize: '0.8125rem',
+              color: 'var(--text-secondary)',
+              marginLeft: '0.5rem',
+              paddingLeft: '0.85rem',
+              borderLeft: '1.5px solid var(--border-subtle)',
+            }}>
               <button
                 onClick={onNavigateHome}
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: 'var(--text-secondary)',
                   cursor: 'pointer',
+                  color: 'var(--text-secondary)',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.3rem',
+                  gap: '0.35rem',
                   fontSize: '0.8125rem',
-                  fontWeight: 600,
-                  transition: 'color 0.15s',
+                  fontWeight: 500,
+                  padding: 0,
+                  transition: 'color 0.15s ease'
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-teal)')}
                 onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
@@ -123,36 +126,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Right Actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          {/* Server Connection Status & Config Button */}
-          <button
-            onClick={() => setIsServerModalOpen(true)}
-            title="Configure API Server URL"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.45rem',
-              padding: '0.45rem 0.85rem',
-              borderRadius: '8px',
-              border: `1.5px solid ${isOnline === true ? '#bbf7d0' : isOnline === false ? '#fecaca' : '#e2e8f0'}`,
-              background: isOnline === true ? '#f0fdf4' : isOnline === false ? '#fef2f2' : '#f8fafc',
-              color: isOnline === true ? '#166534' : isOnline === false ? '#991b1b' : '#64748b',
-              fontSize: '0.78rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
-          >
-            <Server size={14} />
-            <span style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: isOnline === true ? '#22c55e' : isOnline === false ? '#ef4444' : '#94a3b8',
-              display: 'inline-block'
-            }} />
-            <span>{isOnline === true ? 'API Connected' : isOnline === false ? 'API Offline' : 'Connecting...'}</span>
-          </button>
-
           <button
             onClick={onOpenNewProjectModal}
             className="btn btn-primary"
@@ -163,12 +136,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         </div>
       </div>
-
-      <ServerSettingsModal
-        isOpen={isServerModalOpen}
-        onClose={() => setIsServerModalOpen(false)}
-        onServerUpdated={handleServerUpdated}
-      />
     </header>
   );
 };

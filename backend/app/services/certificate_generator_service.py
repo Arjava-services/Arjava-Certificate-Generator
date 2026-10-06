@@ -363,6 +363,9 @@ class CertificateGeneratorService:
             val = ""
             if m.sheet_column and m.sheet_column in row_data:
                 val = str(row_data[m.sheet_column]).strip()
+            elif not m.sheet_column:
+                # Static custom text element added by user
+                val = m.placeholder.replace("{{", "").replace("}}", "").strip()
             if not val:
                 continue
 
@@ -489,6 +492,9 @@ class CertificateGeneratorService:
                 val = ""
                 if m.sheet_column and m.sheet_column in row_data:
                     val = str(row_data[m.sheet_column]).strip()
+                elif not m.sheet_column:
+                    # Static custom text element added by user
+                    val = m.placeholder.replace("{{", "").replace("}}", "").strip()
                 if not val:
                     continue
 
