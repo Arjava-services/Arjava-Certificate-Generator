@@ -13,12 +13,44 @@ import type {
 export function getApiBase(): string {
   if (typeof window !== 'undefined') {
     const custom = localStorage.getItem('CUSTOM_API_URL');
-    if (custom && custom.trim()) {
+    const staleDomains = ['patients-apply-hand-ntsc', 'gap-vintage-gets-tabs'];
+    const isStale = custom && staleDomains.some(d => custom.includes(d));
+    if (custom && custom.trim() && !isStale) {
       return `${custom.trim().replace(/\/$/, '')}/api/v1`;
     }
   }
   const rawBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '';
   return rawBase ? `${rawBase.replace(/\/$/, '')}/api/v1` : '/api/v1';
+}
+
+export function getRawApiHost(): string {
+  if (typeof window !== 'undefined') {
+    const custom = localStorage.getItem('CUSTOM_API_URL');
+    const staleDomains = ['patients-apply-hand-ntsc', 'gap-vintage-gets-tabs'];
+    const isStale = custom && staleDomains.some(d => custom.includes(d));
+    if (custom && custom.trim() && !isStale) {
+      return custom.trim().replace(/\/$/, '');
+    }
+  }
+  const rawBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '';
+  return rawBase ? rawBase.replace(/\/$/, '') : (typeof window !== 'undefined' ? window.location.origin : '');
+}
+
+export async function checkApiHealth(customUrl?: string): Promise<{ ok: boolean; message: string }> {
+  try {
+    const base = customUrl ? customUrl.trim().replace(/\/$/, '') : getRawApiHost();
+    if (!base) return { ok: false, message: 'No API server configured' };
+    const res = await fetch(`${base}/api/health`, {
+      headers: { 'Bypass-Tunnel-Reminder': 'true' }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { ok: true, message: `Connected (${data.app || 'API'} v${data.version || '1.0'})` };
+    }
+    return { ok: false, message: `Server returned HTTP ${res.status}` };
+  } catch (err: any) {
+    return { ok: false, message: err?.message || 'Connection failed' };
+  }
 }
 
 async function apiFetch(input: string, init?: RequestInit): Promise<Response> {

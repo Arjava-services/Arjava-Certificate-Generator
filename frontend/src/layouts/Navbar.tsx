@@ -1,17 +1,39 @@
-import React from 'react';
-import { Award, ChevronRight, Plus, Home } from 'lucide-react';
+﻿import React, { useState, useEffect } from 'react';
+import { Award, ChevronRight, Plus, Home, Server } from 'lucide-react';
+import { ServerSettingsModal } from '../components/ServerSettingsModal';
+import { checkApiHealth } from '../services/api';
 
 interface NavbarProps {
   currentProjectName?: string;
   onNavigateHome: () => void;
   onOpenNewProjectModal: () => void;
+  onServerUpdated?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   currentProjectName,
   onNavigateHome,
   onOpenNewProjectModal,
+  onServerUpdated,
 }) => {
+  const [isServerModalOpen, setIsServerModalOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState<boolean | null>(null);
+
+  const checkStatus = () => {
+    checkApiHealth().then((res) => setIsOnline(res.ok));
+  };
+
+  useEffect(() => {
+    checkStatus();
+    const interval = setInterval(checkStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleServerUpdated = () => {
+    checkStatus();
+    if (onServerUpdated) onServerUpdated();
+  };
+
   return (
     <header style={{
       borderBottom: '1.5px solid var(--border-subtle)',
@@ -101,6 +123,36 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Right Actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {/* Server Connection Status & Config Button */}
+          <button
+            onClick={() => setIsServerModalOpen(true)}
+            title="Configure API Server URL"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.45rem 0.85rem',
+              borderRadius: '8px',
+              border: `1.5px solid ${isOnline === true ? '#bbf7d0' : isOnline === false ? '#fecaca' : '#e2e8f0'}`,
+              background: isOnline === true ? '#f0fdf4' : isOnline === false ? '#fef2f2' : '#f8fafc',
+              color: isOnline === true ? '#166534' : isOnline === false ? '#991b1b' : '#64748b',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}
+          >
+            <Server size={14} />
+            <span style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: isOnline === true ? '#22c55e' : isOnline === false ? '#ef4444' : '#94a3b8',
+              display: 'inline-block'
+            }} />
+            <span>{isOnline === true ? 'API Connected' : isOnline === false ? 'API Offline' : 'Connecting...'}</span>
+          </button>
+
           <button
             onClick={onOpenNewProjectModal}
             className="btn btn-primary"
@@ -111,6 +163,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         </div>
       </div>
+
+      <ServerSettingsModal
+        isOpen={isServerModalOpen}
+        onClose={() => setIsServerModalOpen(false)}
+        onServerUpdated={handleServerUpdated}
+      />
     </header>
   );
 };
